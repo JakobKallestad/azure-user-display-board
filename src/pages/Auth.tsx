@@ -24,9 +24,16 @@ const Auth = () => {
       if (hash && hash.includes('access_token')) {
         setLoading(true);
         try {
-          // Use the correct method for handling OAuth callbacks in newer Supabase versions
+          // Extract the access token from the URL hash
+          const accessToken = hash.substring(1).split('&').find(param => param.startsWith('access_token='))?.split('=')[1];
+          
+          if (!accessToken) {
+            throw new Error('No access token found in URL');
+          }
+          
+          // Set the session with the access token
           const { data, error } = await supabase.auth.setSession({
-            access_token: hash.split('&')[0].split('=')[1],
+            access_token: accessToken,
             refresh_token: '',
           });
           
@@ -34,9 +41,10 @@ const Auth = () => {
             console.error('Error with OAuth callback:', error);
             toast.error('Authentication failed');
           } else {
-            // Successful auth will be picked up by the AuthContext listener
+            console.log('Auth succeeded, redirecting to home page');
             toast.success('Successfully signed in');
-            navigate('/');
+            // Force a hard navigation to clear the URL hash
+            window.location.href = '/';
           }
         } catch (error) {
           console.error('Error processing authentication:', error);
