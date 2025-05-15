@@ -23,16 +23,26 @@ const Auth = () => {
       const hash = window.location.hash;
       if (hash && hash.includes('access_token')) {
         setLoading(true);
-        // Let Supabase handle the OAuth callback
-        const { error } = await supabase.auth.getSessionFromUrl();
-        if (error) {
-          console.error('Error with OAuth callback:', error);
+        try {
+          // Use the correct method for handling OAuth callbacks in newer Supabase versions
+          const { data, error } = await supabase.auth.setSession({
+            access_token: hash.split('&')[0].split('=')[1],
+            refresh_token: '',
+          });
+          
+          if (error) {
+            console.error('Error with OAuth callback:', error);
+            toast.error('Authentication failed');
+          } else {
+            // Successful auth will be picked up by the AuthContext listener
+            toast.success('Successfully signed in');
+            navigate('/');
+          }
+        } catch (error) {
+          console.error('Error processing authentication:', error);
           toast.error('Authentication failed');
+        } finally {
           setLoading(false);
-        } else {
-          // Successful auth will be picked up by the AuthContext listener
-          toast.success('Successfully signed in');
-          navigate('/');
         }
       }
     };
