@@ -10,7 +10,10 @@ const Index = () => {
 
   useEffect(() => {
     if (!loading && !user) {
+      console.log('No user found, redirecting to auth page');
       navigate('/auth');
+    } else if (user) {
+      console.log('User found, displaying dashboard');
     }
   }, [user, loading, navigate]);
 

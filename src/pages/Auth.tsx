@@ -16,6 +16,7 @@ const Auth = () => {
     // If user is already authenticated, redirect to home page
     if (user) {
       navigate('/');
+      return;
     }
 
     // Check if there's a hash in the URL (authentication callback)
@@ -24,12 +25,15 @@ const Auth = () => {
       if (hash && hash.includes('access_token')) {
         setLoading(true);
         try {
-          // Extract the access token from the URL hash
-          const accessToken = hash.substring(1).split('&').find(param => param.startsWith('access_token='))?.split('=')[1];
+          // Parse the URL hash to extract token
+          const params = new URLSearchParams(hash.substring(1));
+          const accessToken = params.get('access_token');
           
           if (!accessToken) {
             throw new Error('No access token found in URL');
           }
+          
+          console.log('Found access token, setting session');
           
           // Set the session with the access token
           const { data, error } = await supabase.auth.setSession({
@@ -38,17 +42,21 @@ const Auth = () => {
           });
           
           if (error) {
-            console.error('Error with OAuth callback:', error);
-            toast.error('Authentication failed');
+            console.error('Error setting session:', error);
+            toast.error('Authentication failed: ' + error.message);
           } else {
             console.log('Auth succeeded, redirecting to home page');
             toast.success('Successfully signed in');
-            // Force a hard navigation to clear the URL hash
-            window.location.href = '/';
+            
+            // Use a slight delay to ensure the auth state is updated before redirect
+            setTimeout(() => {
+              // Hard redirect to clear URL hash
+              window.location.href = '/';
+            }, 500);
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error('Error processing authentication:', error);
-          toast.error('Authentication failed');
+          toast.error('Authentication failed: ' + (error.message || 'Unknown error'));
         } finally {
           setLoading(false);
         }
@@ -72,9 +80,9 @@ const Auth = () => {
       if (error) {
         throw error;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error signing in:', error);
-      toast.error('Failed to sign in with Azure AD');
+      toast.error('Failed to sign in with Azure AD: ' + error.message);
     } finally {
       setLoading(false);
     }
