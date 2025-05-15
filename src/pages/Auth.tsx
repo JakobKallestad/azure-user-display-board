@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -72,7 +71,7 @@ const Auth = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'azure',
         options: {
-          scopes: 'openid email profile User.Read',
+          scopes: 'openid email profile offline_access https://graph.microsoft.com/.default',
           redirectTo: window.location.origin + '/auth'
         }
       });

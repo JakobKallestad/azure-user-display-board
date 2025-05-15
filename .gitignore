@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+token.txt
+vob_files/
+mp4_files/
+__pycache__/
