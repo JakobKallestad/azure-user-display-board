@@ -3,11 +3,15 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
+import { useAuth } from '@/context/AuthContext';
 
 const UserProfile = () => {
+  const { session, refreshAccessToken } = useAuth();
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [children, setChildren] = useState([]);
+  const [progress, setProgress] = useState(0);
+  const [taskId, setTaskId] = useState(null);
 
   useEffect(() => {
     fetchUserData();
@@ -16,9 +20,7 @@ const UserProfile = () => {
   const fetchUserData = async () => {
     try {
       setLoading(true);
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('No active session');
-      const providerToken = session.provider_token;
+      const providerToken = session?.provider_token;
       if (!providerToken) throw new Error('No provider token available');
 
       const response = await fetch('https://graph.microsoft.com/v1.0/me', {
@@ -38,7 +40,6 @@ const UserProfile = () => {
 
   const fetchChildren = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
       const providerToken = session?.provider_token;
       if (!providerToken) throw new Error('No provider token available');
 
@@ -49,7 +50,7 @@ const UserProfile = () => {
 
       if (!response.ok) throw new Error(`Error: ${response.statusText}`);
       const result = await response.json();
-      setChildren(result.value); // Assuming the response has a 'value' field
+      setChildren(result.value);
     } catch (error) {
       console.error('Error fetching children:', error);
       toast.error('Failed to fetch children');
@@ -58,9 +59,13 @@ const UserProfile = () => {
 
   const handleConvertFiles = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
       const providerToken = session?.provider_token;
-      if (!providerToken) throw new Error('No provider token available');
+      const refreshToken = session?.refresh_token;
+
+      // Log the refresh token for debugging
+      console.log('Refresh Token:', refreshToken);
+
+      if (!providerToken || !refreshToken) throw new Error('No provider token available');
 
       const response = await fetch('http://localhost:7000/convert', {
         method: 'POST',
@@ -68,16 +73,31 @@ const UserProfile = () => {
           'Authorization': `Bearer ${providerToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ token: providerToken }),
+        body: JSON.stringify({ token: providerToken, refresh_token: refreshToken }),
       });
 
       if (!response.ok) throw new Error(`Error: ${response.statusText}`);
       const result = await response.json();
+      setTaskId(result.task_id);
       toast.success(result.message);
+
+      pollProgress(result.task_id);
     } catch (error) {
       console.error('Error converting files:', error);
       toast.error('Failed to convert files');
     }
+  };
+
+  const pollProgress = async (taskId) => {
+    const interval = setInterval(async () => {
+      const response = await fetch(`http://localhost:7000/progress/${taskId}`);
+      const data = await response.json();
+      setProgress(data.progress);
+
+      if (data.progress >= 100) {
+        clearInterval(interval);
+      }
+    }, 1000);
   };
 
   const handleSignOut = async () => {
@@ -111,6 +131,12 @@ const UserProfile = () => {
               <div key={child.id}>{child.name}</div>
             ))}
           </div>
+          {progress > 0 && (
+            <div>
+              <div>Progress: {progress}%</div>
+              <progress value={progress} max="100" />
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -26,3 +26,4 @@ token.txt
 vob_files/
 mp4_files/
 __pycache__/
+.env

@@ -1,4 +1,3 @@
-
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from "@/integrations/supabase/client";
@@ -8,12 +7,16 @@ interface AuthContextType {
   session: Session | null;
   user: User | null;
   loading: boolean;
+  refreshAccessToken: () => Promise<string>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
   loading: true,
+  refreshAccessToken: async () => {
+    throw new Error('refreshAccessToken method not implemented');
+  },
 });
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
@@ -28,6 +31,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, newSession) => {
         console.log('Auth state changed:', event);
+        console.log('New session:', newSession);
         setSession(newSession);
         setUser(newSession?.user ?? null);
         setLoading(false);
@@ -37,6 +41,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
       console.log('Initial session check:', initialSession ? 'Session found' : 'No session');
+      console.log('Initial session:', initialSession);
       setSession(initialSession);
       setUser(initialSession?.user ?? null);
       setLoading(false);
@@ -48,8 +53,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
+  const refreshAccessToken = async () => {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error) {
+      throw new Error('Failed to refresh token: ' + error.message);
+    }
+    return data.session.access_token; // Return the new access token
+  };
+
   return (
-    <AuthContext.Provider value={{ session, user, loading }}>
+    <AuthContext.Provider value={{ session, user, loading, refreshAccessToken }}>
       {children}
     </AuthContext.Provider>
   );

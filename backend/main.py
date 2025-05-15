@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,6 +9,18 @@ import asyncio
 import subprocess
 import logging
 from tqdm import tqdm
+from dotenv import load_dotenv
+import uuid
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Get client_id and client_secret from environment variables
+CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+SCOPE = "https://graph.microsoft.com/.default openid profile offline_access"
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +43,7 @@ app.add_middleware(
 
 class ConvertRequest(BaseModel):
     token: str
+    refresh_token: str  # Add refresh token to the request model
 
 output_dir = "vob_files"
 mp4_output_dir = "mp4_files"
@@ -40,12 +53,35 @@ CONCURRENT_UPLOADS = 5
 semaphore_download = asyncio.Semaphore(CONCURRENT_DOWNLOADS)
 semaphore_upload = asyncio.Semaphore(CONCURRENT_UPLOADS)
 
-async def download_file(http_client, item_id, item_name, item_parent_id, token):
+# Shared state for progress tracking
+progress_state = {}
+
+async def refresh_access_token(refresh_token: str):
+    async with aiohttp.ClientSession() as session:
+        response = await session.post(
+            TOKEN_URL,
+            data={
+                'grant_type': 'refresh_token',
+                'refresh_token': refresh_token,
+                'client_id': CLIENT_ID,
+                'client_secret': CLIENT_SECRET,
+                'scope': SCOPE,
+            }
+        )
+        response_data = await response.json()
+        logger.info(refresh_token)
+        logger.info(f"Token refresh response: {response.status}, {response_data}")  # Log the response
+        if response.status != 200:
+            raise HTTPException(status_code=response.status, detail="Failed to refresh token")
+        return response_data['access_token']  # Return the new access token
+
+async def download_file(http_client, item_id, item_name, item_parent_id, refresh_token):
     async with semaphore_download:
         try:
+            token = await refresh_access_token(refresh_token)  # Get a new access token
             async with http_client.get(
                 url=f"https://graph.microsoft.com/v1.0/me/drive/items/{item_id}/content",
-                headers={"Authorization": f"{token}"}
+                headers={"Authorization": f"Bearer {token}"}
             ) as response:
                 response.raise_for_status()
                 total_size = int(response.headers.get("Content-Length", 0))
@@ -81,9 +117,10 @@ async def convert_vob_to_mp4(input_file):
     logger.info(f"Converted {input_file} to {output_file}.")
     return output_file
 
-async def upload_file(file_path, token):
+async def upload_file(file_path, refresh_token):
     async with semaphore_upload:
         try:
+            token = await refresh_access_token(refresh_token)  # Get a new access token
             item_parent_id, filename = os.path.basename(file_path).split("-")
             async with aiohttp.ClientSession() as http_client:
                 request_body = {
@@ -94,7 +131,7 @@ async def upload_file(file_path, token):
                 }
                 async with http_client.post(
                     url=f"https://graph.microsoft.com/v1.0/me/drive/items/{item_parent_id}:/{filename}:/createUploadSession",
-                    headers={"Authorization": f"{token}"},
+                    headers={"Authorization": f"Bearer {token}"},
                     json=request_body
                 ) as response_upload_session:
                     response_upload_session.raise_for_status()
@@ -123,15 +160,16 @@ async def upload_file(file_path, token):
             logger.error(f"Error uploading {file_path}: {e}")
             raise HTTPException(status_code=500, detail=f"Error uploading {file_path}: {e}")
 
-async def find_vob_files(http_client, item_ids, token):
+async def find_vob_files(http_client, item_ids, refresh_token):
     final_item_ids = []
     new_item_ids = []
+    token = await refresh_access_token(refresh_token)
 
     while item_ids:
         for item_id in item_ids:
             async with http_client.get(
                 url=f"https://graph.microsoft.com/v1.0/me/drive/items/{item_id}/children",
-                headers={"Authorization": f"{token}"}
+                headers={"Authorization": f"Bearer {token}"}
             ) as response:
                 response.raise_for_status()
                 msg = await response.json()
@@ -148,30 +186,53 @@ async def find_vob_files(http_client, item_ids, token):
     logger.info(f"Found {len(final_item_ids)} VOB files.")
     return final_item_ids
 
-async def process_files(token, item_ids):
+async def process_files(item_ids, refresh_token, task_id):
+    progress_state[task_id] = 0  # Initialize progress
     async with aiohttp.ClientSession() as http_client:
         # Find all VOB files
-        final_item_ids = await find_vob_files(http_client, item_ids, token)
+        final_item_ids = await find_vob_files(http_client, item_ids, refresh_token)
+        final_item_ids = final_item_ids[:3]
 
         # Download files
-        download_tasks = [download_file(http_client, item_id, item_name, item_parent_id, token) for item_id, item_name, item_parent_id in final_item_ids]
+        download_tasks = [download_file(http_client, item_id, item_name, item_parent_id, refresh_token) for item_id, item_name, item_parent_id in final_item_ids]
         downloaded_files = await asyncio.gather(*download_tasks)
+
+        # Update progress
+        progress_state[task_id] = 50  # 50% after download
 
         # Convert files
         conversion_tasks = [convert_vob_to_mp4(file) for file in downloaded_files]
         converted_files = await asyncio.gather(*conversion_tasks)
 
+        # Update progress
+        progress_state[task_id] = 75  # 75% after conversion
+
         # Upload files
-        upload_tasks = [upload_file(file, token) for file in converted_files]
+        upload_tasks = [upload_file(file, refresh_token) for file in converted_files]
         await asyncio.gather(*upload_tasks)
+
+        # Complete progress
+        progress_state[task_id] = 100  # 100% when done
 
 @app.post("/convert")
 async def convert_files(request: ConvertRequest):
-    token = request.token
-    item_ids = ["47575C443A523D3A!76020"]  # Replace with your logic to get item IDs
     try:
-        await process_files(token, item_ids)
+        # Initialize a unique task_id for tracking progress
+        task_id = str(uuid.uuid4())  # Generate a unique task ID
+        progress_state[task_id] = 0  # Initialize progress state for this task
+        print(task_id)
+        print(type(request.refresh_token))
+
+        item_ids = ["47575C443A523D3A!76020"]  # Replace with your logic to get item IDs
+        await process_files(item_ids, request.refresh_token, task_id)
         return JSONResponse(content={"message": "Files processed successfully."})
     except Exception as e:
         logger.error(f"Error processing files: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/progress/{task_id}")
+async def get_progress(task_id: str):
+    if task_id in progress_state:
+        return JSONResponse(content={"task_id": task_id, "progress": progress_state[task_id]})
+    else:
+        raise HTTPException(status_code=404, detail="Task ID not found")

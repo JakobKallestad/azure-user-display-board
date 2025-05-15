@@ -12,57 +12,9 @@ const Auth = () => {
   const { user } = useAuth();
 
   useEffect(() => {
-    // If user is already authenticated, redirect to home page
     if (user) {
-      navigate('/');
-      return;
+      navigate('/'); // Redirect to home page if user is authenticated
     }
-
-    // Check if there's a hash in the URL (authentication callback)
-    const handleAuthRedirect = async () => {
-      const hash = window.location.hash;
-      if (hash && hash.includes('access_token')) {
-        setLoading(true);
-        try {
-          // Parse the URL hash to extract token
-          const params = new URLSearchParams(hash.substring(1));
-          const accessToken = params.get('access_token');
-          
-          if (!accessToken) {
-            throw new Error('No access token found in URL');
-          }
-          
-          console.log('Found access token, setting session');
-          
-          // Set the session with the access token
-          const { data, error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: '',
-          });
-          
-          if (error) {
-            console.error('Error setting session:', error);
-            toast.error('Authentication failed: ' + error.message);
-          } else {
-            console.log('Auth succeeded, redirecting to home page');
-            toast.success('Successfully signed in');
-            
-            // Use a slight delay to ensure the auth state is updated before redirect
-            setTimeout(() => {
-              // Hard redirect to clear URL hash
-              window.location.href = '/';
-            }, 500);
-          }
-        } catch (error: any) {
-          console.error('Error processing authentication:', error);
-          toast.error('Authentication failed: ' + (error.message || 'Unknown error'));
-        } finally {
-          setLoading(false);
-        }
-      }
-    };
-
-    handleAuthRedirect();
   }, [user, navigate]);
 
   const handleAzureSignIn = async () => {
@@ -79,7 +31,7 @@ const Auth = () => {
       if (error) {
         throw error;
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error signing in:', error);
       toast.error('Failed to sign in with Azure AD: ' + error.message);
     } finally {
