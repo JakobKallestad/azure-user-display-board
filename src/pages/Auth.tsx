@@ -1,14 +1,44 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/components/ui/sonner";
+import { useAuth } from '@/context/AuthContext';
 
 const Auth = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    // If user is already authenticated, redirect to home page
+    if (user) {
+      navigate('/');
+    }
+
+    // Check if there's a hash in the URL (authentication callback)
+    const handleAuthRedirect = async () => {
+      const hash = window.location.hash;
+      if (hash && hash.includes('access_token')) {
+        setLoading(true);
+        // Let Supabase handle the OAuth callback
+        const { error } = await supabase.auth.getSessionFromUrl();
+        if (error) {
+          console.error('Error with OAuth callback:', error);
+          toast.error('Authentication failed');
+          setLoading(false);
+        } else {
+          // Successful auth will be picked up by the AuthContext listener
+          toast.success('Successfully signed in');
+          navigate('/');
+        }
+      }
+    };
+
+    handleAuthRedirect();
+  }, [user, navigate]);
 
   const handleAzureSignIn = async () => {
     try {
@@ -17,7 +47,7 @@ const Auth = () => {
         provider: 'azure',
         options: {
           scopes: 'openid email profile User.Read',
-          redirectTo: window.location.origin
+          redirectTo: window.location.origin + '/auth'
         }
       });
 
