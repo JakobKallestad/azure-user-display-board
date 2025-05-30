@@ -12,6 +12,7 @@ const UserProfile = () => {
   const [children, setChildren] = useState([]);
   const [progress, setProgress] = useState(0);
   const [taskId, setTaskId] = useState(null);
+  const [onedriveUrl, setOnedriveUrl] = useState('');
 
   useEffect(() => {
     fetchUserData();
@@ -60,9 +61,10 @@ const UserProfile = () => {
   const handleConvertFiles = async () => {
     try {
       const providerToken = session?.provider_token;
-      const refreshToken = session?.refresh_token;
+      const refreshToken = session?.provider_refresh_token;
 
-      // Log the refresh token for debugging
+      console.log('Session:', session);
+      console.log('Provider Token:', providerToken);
       console.log('Refresh Token:', refreshToken);
 
       if (!providerToken || !refreshToken) throw new Error('No provider token available');
@@ -73,31 +75,17 @@ const UserProfile = () => {
           'Authorization': `Bearer ${providerToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ token: providerToken, refresh_token: refreshToken }),
+        body: JSON.stringify({ refresh_token: refreshToken, onedrive_url: onedriveUrl }),
       });
 
       if (!response.ok) throw new Error(`Error: ${response.statusText}`);
       const result = await response.json();
       setTaskId(result.task_id);
       toast.success(result.message);
-
-      pollProgress(result.task_id);
     } catch (error) {
       console.error('Error converting files:', error);
       toast.error('Failed to convert files');
     }
-  };
-
-  const pollProgress = async (taskId) => {
-    const interval = setInterval(async () => {
-      const response = await fetch(`http://localhost:7000/progress/${taskId}`);
-      const data = await response.json();
-      setProgress(data.progress);
-
-      if (data.progress >= 100) {
-        clearInterval(interval);
-      }
-    }, 1000);
   };
 
   const handleSignOut = async () => {
@@ -110,6 +98,32 @@ const UserProfile = () => {
       toast.error('Failed to sign out');
     }
   };
+
+  // New useEffect for polling progress
+  useEffect(() => {
+    if (!taskId) return;  // Only poll if taskId is set
+
+    const intervalId = setInterval(async () => {
+      try {
+        const response = await fetch(`http://localhost:7000/progress/${taskId}`);
+        if (!response.ok) throw new Error(`Progress check failed: ${response.statusText}`);
+        const data = await response.json();
+        setProgress(data.progress);
+
+        if (data.progress >= 100) {
+          clearInterval(intervalId);  // Stop polling when complete
+          toast.success('Conversion completed!');
+        }
+      } catch (error) {
+        console.error('Error polling progress:', error);
+        toast.error('Failed to check progress; please try again later.');
+        // Optionally, stop polling on repeated errors, but for now, let it continue
+      }
+    }, 5000);  // Poll every 5 seconds to handle long-running tasks efficiently
+
+    // Cleanup: Clear the interval when taskId changes or component unmounts
+    return () => clearInterval(intervalId);
+  }, [taskId]);  // Depend on taskId so it restarts if a new task is set
 
   if (loading) {
     return <div>Loading your profile...</div>;
@@ -124,6 +138,13 @@ const UserProfile = () => {
         </CardHeader>
         <CardContent>
           <div>{userData?.displayName}</div>
+          <input 
+            type="text" 
+            value={onedriveUrl} 
+            onChange={(e) => setOnedriveUrl(e.target.value)} 
+            placeholder="Enter OneDrive URL" 
+            className="w-full p-2 border rounded-md mb-4"
+          />
           <Button onClick={fetchChildren}>Fetch Children</Button>
           <Button onClick={handleConvertFiles}>Convert Files</Button>
           <div>
