@@ -28,7 +28,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 md:p-8">
-      <div className="max-w-8xl mx-auto">
+      <div className="w-full max-w-[1800px] mx-auto">
         <h1 className="text-3xl font-bold mb-8">1Driver Dashboard</h1>
         {user ? (
           <UserProfile />

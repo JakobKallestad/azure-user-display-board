@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vob-converter-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - CLIENT_ID=${CLIENT_ID}
+      - CLIENT_SECRET=${CLIENT_SECRET}
+    volumes:
+      - backend_vob_files:/app/vob_files
+      - backend_mp4_files:/app/mp4_files
+      - backend_logs:/app/logs
+    networks:
+      - vob-converter-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_BASE_URL=/api
+        - VITE_AZURE_CLIENT_ID=${VITE_AZURE_CLIENT_ID}
+        - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+        - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+    container_name: vob-converter-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - vob-converter-network
+    restart: unless-stopped
+
+networks:
+  vob-converter-network:
+    driver: bridge
+
+volumes:
+  backend_vob_files:
+  backend_mp4_files:
+  backend_logs: 
