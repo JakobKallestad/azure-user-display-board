@@ -1,4 +1,3 @@
-
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -29,7 +28,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 md:p-8">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-8xl mx-auto">
         <h1 className="text-3xl font-bold mb-8">1Driver Dashboard</h1>
         {user ? (
           <UserProfile />
