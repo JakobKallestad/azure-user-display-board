@@ -1,14 +1,21 @@
 {
   "name": "vite_react_shadcn_ts",
+  "homepage": "https://JakobKallestad.github.io/azure-user-display-board",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:local": "copy ..\\.env.local .env && vite --mode development",
+    "dev:prod": "copy ..\\.env.production .env && vite --mode development",
     "build": "vite build",
+    "build:local": "vite build --env-file .env.local",
+    "build:prod": "vite build --env-file .env.production",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
   },
   "dependencies": {
     "@azure/msal-browser": "^4.12.0",
@@ -48,6 +55,7 @@
     "cmdk": "^1.0.0",
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.3.0",
+    "gh-pages": "^6.3.0",
     "input-otp": "^1.2.4",
     "lucide-react": "^0.462.0",
     "next-themes": "^0.3.0",

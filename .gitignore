@@ -29,4 +29,5 @@ vob_files2/
 mp4_files2/
 __pycache__/
 .env
+.env.production
 docker.env
