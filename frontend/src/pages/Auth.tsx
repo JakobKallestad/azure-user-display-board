@@ -20,11 +20,16 @@ const Auth = () => {
   const handleAzureSignIn = async () => {
     try {
       setLoading(true);
+      
+      const redirectUrl = import.meta.env.VITE_REDIRECT_URL || `${window.location.origin}/auth`;
+      
+      console.log('Using redirect URL:', redirectUrl); // Debug log
+      
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'azure',
         options: {
           scopes: 'openid email profile offline_access https://graph.microsoft.com/.default',
-          redirectTo: window.location.origin + '/azure-user-display-board/auth'
+          redirectTo: redirectUrl
         }
       });
 

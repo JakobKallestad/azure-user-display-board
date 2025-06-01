@@ -29,6 +29,7 @@ services:
         - VITE_AZURE_CLIENT_ID=${VITE_AZURE_CLIENT_ID}
         - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
         - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+        - VITE_REDIRECT_URL=${VITE_REDIRECT_URL}
     container_name: vob-converter-frontend-builder
     command: sh -c "npm run build && cp -r /app/dist/* /output/"
     env_file:

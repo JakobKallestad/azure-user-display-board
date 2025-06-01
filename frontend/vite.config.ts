@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => ({
       }
     },
   },
-  base: "/azure-user-display-board/",
+  base: "/",
   plugins: [
     react(),
     mode === 'development' &&
