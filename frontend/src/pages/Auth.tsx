@@ -24,7 +24,7 @@ const Auth = () => {
         provider: 'azure',
         options: {
           scopes: 'openid email profile offline_access https://graph.microsoft.com/.default',
-          redirectTo: window.location.origin + '/#/auth'
+          redirectTo: window.location.origin + '/azure-user-display-board/auth'
         }
       });
 
