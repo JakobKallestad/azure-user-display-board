@@ -79,18 +79,32 @@ async def process_selected_files(file_ids: list[str], refresh_token: str, task_i
         # Final summary
         failed_count = len(progress_state[task_id]["failed_files"])
         success_count = len(progress_state[task_id]["completed_uploads"])
-        
-        update_progress(task_id,
-                       overall_progress=100,
-                       current_phase="completed",
-                       current_file="",
-                       details=f"Processing complete! {success_count} files successful, {failed_count} failed.")
 
-        # Handle processing failure and refund credits if needed
-        await handle_processing_failure(task_id, f"Processing failed: {failed_count} files failed.")
+        if failed_count > 0:
+            # Mark as failed and trigger refund
+            update_progress(
+                task_id,
+                current_phase="failed",
+                current_file="",
+                details=f"Processing finished with errors. {success_count} succeeded, {failed_count} failed.",
+                overall_progress=0,
+            )
+            await handle_processing_failure(task_id, f"{failed_count} files failed")
+        else:
+            # Success path: do not refund
+            update_progress(
+                task_id,
+                overall_progress=100,
+                current_phase="completed",
+                current_file="",
+                details=f"Processing complete! {success_count} files successful."
+            )
 
 async def handle_processing_failure(task_id: str, error_message: str):
-    """Handle processing failure and refund credits if needed."""
+    """Handle processing failure and refund credits if needed.
+
+    Note: Does not change progress phase; caller is responsible for setting phase/details.
+    """
     try:
         if task_id in progress_state:
             progress_data = progress_state[task_id]
@@ -100,12 +114,5 @@ async def handle_processing_failure(task_id: str, error_message: str):
             if user_id and estimated_cost:
                 logger.info(f"Processing failed for task {task_id}, initiating refund")
                 await refund_credits_on_failure(user_id, estimated_cost, task_id)
-            
-            # Update progress to show failure
-            update_progress(task_id, 
-                current_phase="failed",
-                details=f"Processing failed: {error_message}",
-                overall_progress=0
-            )
     except Exception as e:
         logger.error(f"Error handling processing failure: {e}")
