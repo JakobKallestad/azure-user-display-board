@@ -9,6 +9,9 @@ import logging
 from decimal import Decimal
 from fastapi import HTTPException
 from supabase import create_client, Client
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +21,10 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
 if SUPABASE_URL and SUPABASE_SERVICE_KEY:
     supabase: Client | None = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    logger.info("credits.py: Supabase configured: url_present=%s key_present=%s", bool(SUPABASE_URL), bool(SUPABASE_SERVICE_KEY))
 else:
     supabase = None
-    logger.warning("Supabase configuration missing. Credit system will be disabled.")
+    logger.error("credits.py: Supabase configuration missing. Credit system disabled in credits module.")
 
 
 async def get_or_create_user_credits(user_id: str) -> dict:
@@ -113,4 +117,63 @@ async def refund_credits_on_failure(user_id: str, amount: float, task_id: str):
     except Exception as e:
         logger.error(f"Failed to refund credits: {e}")
 
+
+async def add_user_credits(user_id: str, amount: float, description: str = "Stripe top-up") -> dict:
+    """Add credits to a user's balance and log the transaction.
+
+    Returns the updated credit record.
+    """
+    if not supabase:
+        logger.error("add_user_credits: Supabase is not configured in credits.py")
+        raise HTTPException(status_code=500, detail="Credit system not configured (credits module)")
+
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+
+    logger.info("add_user_credits: start user_id=%s amount=%s", user_id, amount)
+    try:
+        # Ensure user credits row exists
+        current = await get_or_create_user_credits(user_id)
+        previous_amount = float(current.get("credits", 0.0))
+        new_amount = previous_amount + float(amount)
+
+        # Update balance
+        updated = supabase.table("user_credits").update({
+            "credits": new_amount,
+            "updated_at": "now()"
+        }).eq("user_id", user_id).execute()
+
+        if not updated.data:
+            # In rare cases if update returns no row (race), try insert
+            supabase.table("user_credits").insert({
+                "user_id": user_id,
+                "credits": new_amount
+            }).execute()
+
+        # Log transaction (best-effort)
+        try:
+            supabase.table("credit_transactions").insert({
+                "user_id": user_id,
+                "added_amount": float(amount),
+                "previous_credits": previous_amount,
+                "new_credits": new_amount,
+                "remaining_credits": new_amount,
+                "transaction_type": "credit",
+                "description": description,
+                "updated_at": "now()"
+            }).execute()
+        except Exception as log_error:
+            logger.warning(f"Failed to log credit transaction: {log_error}")
+
+        logger.info("add_user_credits: success user_id=%s prev=%s new=%s", user_id, previous_amount, new_amount)
+        return {
+            "user_id": user_id,
+            "previous_credits": previous_amount,
+            "new_credits": new_amount
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error adding credits for %s: %r", user_id, e)
+        raise HTTPException(status_code=500, detail="Failed to add credits")
 

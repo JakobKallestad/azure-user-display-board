@@ -6,11 +6,12 @@ import asyncio
 import logging
 import aiohttp
 import shutil
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
 from decimal import Decimal
+from credits import add_user_credits as credits_add_user_credits
 from datetime import datetime
 
 from config import OUTPUT_DIR, MP4_OUTPUT_DIR, LOG_DIR, CONCURRENT, GRAPH_API
@@ -41,6 +42,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# --- Stripe ---
+import stripe
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_PRICE_ID = os.getenv("STRIPE_PRICE_ID", "")  # Price for $1 credit top-up
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
+else:
+    logger.warning("Stripe not configured; payment endpoints will be disabled")
 
 # --- Session Management ---
 user_sessions = {}  # session_id -> session_data
@@ -111,6 +121,80 @@ async def create_session():
     """Create a new user session."""
     session_id = get_or_create_session()
     return JSONResponse(content={"session_id": session_id})
+
+@app.post("/payments/create-checkout-session")
+async def create_checkout_session(user_id: str, amount: float = 1.0):
+    """Create a Stripe Checkout Session to top up credits."""
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=500, detail="Payments not configured")
+    try:
+        line_items = []
+        if STRIPE_PRICE_ID:
+            line_items = [{
+                'price': STRIPE_PRICE_ID,
+                'quantity': int(max(1, round(amount)))
+            }]
+        else:
+            line_items = [{
+                'price_data': {
+                    'currency': 'usd',
+                    'product_data': {'name': 'Credit top-up'},
+                    'unit_amount': int(amount * 100)
+                },
+                'quantity': 1
+            }]
+
+        session = stripe.checkout.Session.create(
+            mode='payment',
+            line_items=line_items,
+            success_url=os.getenv('PAYMENT_SUCCESS_URL', 'http://localhost:3000') + '?session_id={CHECKOUT_SESSION_ID}',
+            cancel_url=os.getenv('PAYMENT_CANCEL_URL', 'http://localhost:3000'),
+            metadata={'user_id': user_id, 'topup_amount': str(amount)}
+        )
+        return { 'checkout_url': session.url }
+    except Exception as e:
+        logger.error(f"Failed to create checkout session: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create checkout session")
+
+@app.post("/payments/webhook")
+async def stripe_webhook(request: Request):
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=500, detail="Webhook not configured")
+    try:
+        payload = await request.body()
+        sig_header = request.headers.get('stripe-signature')
+        logger.info("Stripe webhook hit. signature header present=%s length=%s", bool(sig_header), len(payload))
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+        logger.info("Stripe event verified id=%s type=%s", event.get('id'), event.get('type'))
+    except Exception as e:
+        logger.error(f"Webhook signature verification failed: {e}")
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    if event.get('type') in ('checkout.session.completed', 'checkout.session.async_payment_succeeded'):
+        session_obj = event.get('data', {}).get('object', {}) or {}
+        metadata = session_obj.get('metadata') or {}
+        user_id = metadata.get('user_id')
+        amount_str = metadata.get('topup_amount', '1.0')
+        try:
+            amount = float(amount_str)
+        except Exception:
+            amount = 1.0
+
+        logger.info("Stripe checkout completed metadata user_id=%s amount=%s", user_id, amount)
+
+        if user_id:
+            try:
+                # Use centralized credits helper (aliased to avoid name clash with endpoint)
+                await credits_add_user_credits(user_id, amount, description='Stripe top-up')
+                logger.info("Credits updated for user %s by $%s", user_id, amount)
+            except Exception as e:
+                logger.error("Failed to add credits after payment: %r", e)
+        else:
+            logger.warning("Stripe session metadata missing user_id; skipping credit update")
+    else:
+        logger.info("Ignoring Stripe event type %s", event.get('type'))
+
+    return { 'received': True }
 
 @app.delete("/session/{session_id}")
 async def delete_session(session_id: str):
@@ -284,7 +368,8 @@ def calculate_processing_estimates(total_size_bytes: int) -> dict:
     total_size_gb = total_size_bytes / (1024 ** 3)  # Convert to GB
     
     # 300MB takes 45 minutes, so 1GB takes 150 minutes (2.5 hours)
-    minutes_per_gb = 150
+    minutes_per_gb = 2.7
+    # DEBUG
     estimated_minutes = total_size_gb * minutes_per_gb
     
     # Cost: $1 per GB

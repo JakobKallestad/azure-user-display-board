@@ -73,7 +73,7 @@ export const ProcessingEstimates: React.FC<ProcessingEstimatesProps> = ({
                 {formatDuration(selectedTime)}
               </div>
               <div className="text-xs text-muted-foreground">
-                Based on 300MB = 45min
+                Based on 1GB = 2.7min
               </div>
             </div>
           </div>

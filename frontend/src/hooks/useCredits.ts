@@ -41,23 +41,10 @@ export const useCredits = () => {
 
     try {
       setIsLoading(true);
-      const transaction = await creditsService.addCredits(session.user.id, amount);
-      
-      // Update local state
-      setCredits(prev => prev ? {
-        ...prev,
-        credits: transaction.new_credits || prev.credits,
-        updated_at: transaction.updated_at
-      } : null);
-
-      toast({
-        title: "Credits Added!",
-        description: `Added $${amount.toFixed(2)} to your account. New balance: $${transaction.new_credits?.toFixed(2)}`,
-      });
-
-      return transaction;
+      const { checkout_url } = await creditsService.createCheckout(session.user.id, amount);
+      window.location.href = checkout_url;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to add credits';
+      const errorMessage = err instanceof Error ? err.message : 'Failed to start checkout';
       toast({
         title: "Error",
         description: errorMessage,
@@ -101,6 +88,11 @@ export const useCredits = () => {
       fetchCredits();
     } else {
       setCredits(null);
+    }
+    // On success redirect, make sure to refresh credits once
+    const url = new URL(window.location.href);
+    if (url.pathname === '/credits-success') {
+      fetchCredits();
     }
   }, [session?.user?.id, fetchCredits]);
 

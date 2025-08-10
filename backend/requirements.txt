@@ -6,3 +6,4 @@ python-multipart==0.0.6
 tqdm==4.66.1
 pydantic==2.5.0
 supabase==2.9.1 
+stripe==7.11.0
