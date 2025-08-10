@@ -8,9 +8,8 @@ services:
     container_name: vob-converter-backend
     ports:
       - "8000:8000"
-    environment:
-      - CLIENT_ID=${CLIENT_ID}
-      - CLIENT_SECRET=${CLIENT_SECRET}
+    env_file:
+      - .env.local
     volumes:
       - backend_vob_files:/app/vob_files
       - backend_mp4_files:/app/mp4_files
@@ -19,42 +18,42 @@ services:
       - vob-converter-network
     restart: unless-stopped
 
-  # Frontend builder for static deployment
-  frontend-builder:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-      args:
-        - VITE_API_BASE_URL=${VITE_API_BASE_URL}
-        - VITE_AZURE_CLIENT_ID=${VITE_AZURE_CLIENT_ID}
-        - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
-        - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
-        - VITE_REDIRECT_URL=${VITE_REDIRECT_URL}
-    container_name: vob-converter-frontend-builder
-    command: sh -c "npm run build && cp -r /app/dist/* /output/"
-    env_file:
-      - .env.production
-    volumes:
-      - ./frontend/dist:/output
-    profiles:
-      - build
+  # # Frontend builder for static deployment
+  # frontend-builder:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #     args:
+  #       - VITE_API_BASE_URL=${VITE_API_BASE_URL}
+  #       - VITE_AZURE_CLIENT_ID=${VITE_AZURE_CLIENT_ID}
+  #       - VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+  #       - VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
+  #       - VITE_REDIRECT_URL=${VITE_REDIRECT_URL}
+  #   container_name: vob-converter-frontend-builder
+  #   command: sh -c "npm run build && cp -r /app/dist/* /output/"
+  #   env_file:
+  #     - .env.production
+  #   volumes:
+  #     - ./frontend/dist:/output
+  #   profiles:
+  #     - build
 
-  # Production frontend server
-  frontend:
-    image: nginx:alpine
-    container_name: vob-converter-frontend
-    ports:
-      - "3000:80"
-    volumes:
-      - ./frontend/dist:/usr/share/nginx/html:ro
-      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - backend
-    env_file:
-      - .env.production
-    networks:
-      - vob-converter-network
-    restart: unless-stopped
+  # # Production frontend server
+  # frontend:
+  #   image: nginx:alpine
+  #   container_name: vob-converter-frontend
+  #   ports:
+  #     - "3000:80"
+  #   volumes:
+  #     - ./frontend/dist:/usr/share/nginx/html:ro
+  #     - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+  #   depends_on:
+  #     - backend
+  #   env_file:
+  #     - .env.production
+  #   networks:
+  #     - vob-converter-network
+  #   restart: unless-stopped
 
   # Frontend dev server that uses local backend
   frontend-dev:

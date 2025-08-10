@@ -6,12 +6,24 @@ export interface FileItem {
   path: string;
   children: FileItem[];
   vob_count: number;
+  vob_size: number;
   is_vob: boolean;
+}
+
+export interface ProcessingEstimates {
+  total_size_bytes: number;
+  total_size_gb: number;
+  estimated_minutes: number;
+  estimated_cost: number;
+  total_cost_usd: number;
+  can_afford?: boolean;
 }
 
 export interface FileTreeResponse {
   tree: FileItem[];
   total_vob_files: number;
+  total_vob_size: number;
+  estimates: ProcessingEstimates;
 }
 
 export interface FileProgress {
@@ -41,9 +53,27 @@ export interface ProgressInfo {
 export interface ConversionRequest {
   file_ids: string[];
   refresh_token: string;
+  user_id: string;
+  estimated_cost?: number;
 }
 
 export interface ConversionResponse {
   task_id: string;
-  message: string;
+  session_id: string;
+}
+
+export interface UserCredits {
+  user_id: string;
+  credits: number;
+  updated_at: string;
+}
+
+export interface CreditTransaction {
+  user_id: string;
+  previous_credits?: number;
+  added_amount?: number;
+  deducted_amount?: number;
+  new_credits?: number;
+  remaining_credits?: number;
+  updated_at: string;
 } 

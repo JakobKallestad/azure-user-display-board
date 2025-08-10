@@ -77,6 +77,7 @@ export const useAuth = () => {
     isAuthenticated: !!session,
     providerToken: session?.provider_token,
     refreshToken: session?.provider_refresh_token,
+    supabaseRefreshToken: session?.refresh_token,
     supabase, // Export supabase client for other uses
   };
 }; 

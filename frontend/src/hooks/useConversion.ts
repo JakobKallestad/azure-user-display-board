@@ -47,8 +47,13 @@ export const useConversion = () => {
     }
   }, [sessionId, toast]);
 
-  const startConversion = useCallback(async (selectedFiles: Set<string>) => {
-    if (selectedFiles.size === 0) {
+  const startConversion = useCallback(async (data: { 
+    file_ids: string[]; 
+    refresh_token: string; 
+    user_id: string;
+    estimated_cost?: number;
+  }) => {
+    if (data.file_ids.length === 0) {
       toast({
         title: "Error",
         description: "Please select at least one VOB file to convert",
@@ -57,7 +62,7 @@ export const useConversion = () => {
       return;
     }
 
-    if (!refreshToken) {
+    if (!data.refresh_token) {
       toast({
         title: "Error",
         description: "No refresh token available",
@@ -79,15 +84,12 @@ export const useConversion = () => {
       setIsConverting(true);
       setProgress(null);
 
-      const response = await apiService.startConversion({
-        file_ids: Array.from(selectedFiles),
-        refresh_token: refreshToken
-      }, sessionId);
+      const response = await apiService.startConversion(data, sessionId);
 
       setTaskId(response.task_id);
       toast({
         title: "Success",
-        description: `Conversion started for ${selectedFiles.size} files!`,
+        description: `Conversion started for ${data.file_ids.length} files!`,
       });
 
       // Start polling for progress
@@ -103,8 +105,9 @@ export const useConversion = () => {
         variant: "destructive",
       });
       setIsConverting(false);
+      throw error; // Re-throw so UserProfile can handle it
     }
-  }, [refreshToken, sessionId, toast, pollProgress]);
+  }, [sessionId, toast, pollProgress]);
 
   const stopPolling = useCallback(() => {
     if (pollIntervalRef.current) {

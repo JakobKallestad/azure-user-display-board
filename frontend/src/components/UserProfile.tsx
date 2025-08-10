@@ -12,6 +12,11 @@ import { useConversion } from '@/hooks/useConversion';
 import { useSession } from '@/hooks/useSession';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, FolderOpen, FileVideo, Users } from 'lucide-react';
+import { ProcessingEstimates } from './ProcessingEstimates';
+import { formatFileSize } from '@/utils/fileTree';
+import { useCredits } from '@/hooks/useCredits';
+import { CreditsDisplay } from './CreditsDisplay';
+import { ConversionConfirmDialog } from './ConversionConfirmDialog';
 
 const UserProfile: React.FC = () => {
   const [onedriveUrl, setOnedriveUrl] = useState('');
@@ -23,6 +28,8 @@ const UserProfile: React.FC = () => {
   const {
     fileTree,
     totalVobFiles,
+    totalVobSize,
+    estimates,
     isLoadingTree,
     selectedFiles,
     expandedFolders,
@@ -39,6 +46,12 @@ const UserProfile: React.FC = () => {
     startConversion,
     cleanup: cleanupConversion,
   } = useConversion();
+
+  // Add credits hook
+  const { credits, canAfford, deductCredits, fetchCredits } = useCredits();
+
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [isStartingConversion, setIsStartingConversion] = useState(false);
 
   // Debug logging
   useEffect(() => {
@@ -85,8 +98,105 @@ const UserProfile: React.FC = () => {
     fetchFileTree(onedriveUrl);
   };
 
-  const handleConvert = () => {
-    startConversion(selectedFiles);
+  const handleStartConversion = async () => {
+    console.log('🚀 Starting conversion process...');
+    console.log('Session:', { 
+      sessionId, 
+      hasRefreshToken: !!session?.refresh_token, 
+      hasProviderRefreshToken: !!session?.provider_refresh_token,
+      userId: session?.user?.id,
+      refreshTokenLength: session?.refresh_token?.length,
+      providerRefreshTokenLength: session?.provider_refresh_token?.length,
+      refreshTokenStart: session?.refresh_token?.substring(0, 20) + '...',
+      providerRefreshTokenStart: session?.provider_refresh_token?.substring(0, 20) + '...'
+      
+    });
+    console.log('Selected files:', Array.from(selectedFiles));
+    console.log('Estimates:', estimates);
+    
+    if (!sessionId) {
+      toast({
+        title: "Error",
+        description: "No session available",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!session?.provider_refresh_token) {
+      toast({
+        title: "Error", 
+        description: "No provider refresh token available",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if user can afford the conversion - use the correct field name
+    const estimatedCost = estimates?.estimated_cost || 0;
+    console.log('💰 Credit check:', { 
+      estimatedCost, 
+      currentCredits: credits?.credits, 
+      canAfford: canAfford(estimatedCost),
+      estimatesObject: estimates 
+    });
+    
+    if (!canAfford(estimatedCost)) {
+      toast({
+        title: "Insufficient Credits",
+        description: `You need $${estimatedCost.toFixed(2)} but only have $${credits?.credits.toFixed(2) || '0.00'}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Show the prettier confirmation dialog
+    setShowConfirmDialog(true);
+  };
+
+  const handleConfirmConversion = async () => {
+    setIsStartingConversion(true);
+    
+    try {
+      const selectedFileIds = Array.from(selectedFiles);
+      const estimatedCost = estimates?.estimated_cost || 0;
+      const conversionData = {
+        file_ids: selectedFileIds,
+        refresh_token: session!.provider_refresh_token,
+        user_id: session!.user.id,
+        estimated_cost: estimatedCost,
+      };
+      
+      console.log('📤 Sending conversion request:', {
+        file_ids: conversionData.file_ids,
+        refresh_token_length: conversionData.refresh_token.length,
+        refresh_token_starts_with: conversionData.refresh_token.substring(0, 10),
+        estimated_cost: conversionData.estimated_cost,
+        user_id: conversionData.user_id
+      });
+      
+      await startConversion(conversionData);
+
+      // Immediately update credits UI to reflect the deduction
+      await fetchCredits();
+      
+      setShowConfirmDialog(false);
+      toast({
+        title: "Conversion Started",
+        description: `Processing ${selectedFiles.size} files. Credits have been deducted.`,
+      });
+    } catch (error) {
+      console.error('❌ Conversion failed:', error);
+      // If conversion fails to start, refresh credits to show any refunds
+      await fetchCredits();
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to start conversion",
+        variant: "destructive",
+      });
+    } finally {
+      setIsStartingConversion(false);
+    }
   };
 
   const handleSignOut = async () => {
@@ -186,7 +296,7 @@ const UserProfile: React.FC = () => {
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2">
                 <FileVideo className="h-5 w-5" />
-                Files ({totalVobFiles} VOB files found)
+                Files ({totalVobFiles} VOB files found - {formatFileSize(totalVobSize)})
               </CardTitle>
               <div className="space-x-2">
                 <Button variant="outline" size="sm" onClick={selectAllVobFiles}>
@@ -217,6 +327,19 @@ const UserProfile: React.FC = () => {
         </Card>
       )}
 
+      {/* Add Credits Display after user info */}
+      <CreditsDisplay />
+
+      {/* Processing Estimates */}
+      {estimates && selectedFiles.size > 0 && (
+        <ProcessingEstimates 
+          estimates={estimates}
+          selectedFilesCount={selectedFiles.size}
+          totalFilesCount={totalVobFiles}
+          userCredits={credits?.credits || 0}
+        />
+      )}
+
       {/* Conversion Controls */}
       {selectedFiles.size > 0 && (
         <Card>
@@ -235,7 +358,7 @@ const UserProfile: React.FC = () => {
                 </div>
               </div>
               <Button 
-                onClick={handleConvert} 
+                onClick={handleStartConversion} 
                 disabled={isButtonDisabled}
                 size="lg"
                 className="min-w-[150px]"
@@ -265,6 +388,17 @@ const UserProfile: React.FC = () => {
           <ProgressDisplay progress={progress} />
         </div>
       )}
+
+      <ConversionConfirmDialog
+        isOpen={showConfirmDialog}
+        onClose={() => setShowConfirmDialog(false)}
+        onConfirm={handleConfirmConversion}
+        fileCount={selectedFiles.size}
+        estimatedCost={estimates?.estimated_cost || 0}
+        currentBalance={credits?.credits || 0}
+        remainingBalance={(credits?.credits || 0) - (estimates?.estimated_cost || 0)}
+        isLoading={isStartingConversion}
+      />
     </div>
   );
 };

@@ -84,3 +84,27 @@ async def process_selected_files(file_ids: list[str], refresh_token: str, task_i
                        current_phase="completed",
                        current_file="",
                        details=f"Processing complete! {success_count} files successful, {failed_count} failed.")
+
+        # Handle processing failure and refund credits if needed
+        await handle_processing_failure(task_id, f"Processing failed: {failed_count} files failed.")
+
+async def handle_processing_failure(task_id: str, error_message: str):
+    """Handle processing failure and refund credits if needed."""
+    try:
+        if task_id in progress_state:
+            progress_data = progress_state[task_id]
+            user_id = progress_data.get("user_id")
+            estimated_cost = progress_data.get("estimated_cost")
+            
+            if user_id and estimated_cost:
+                logger.info(f"Processing failed for task {task_id}, initiating refund")
+                await refund_credits_on_failure(user_id, estimated_cost, task_id)
+            
+            # Update progress to show failure
+            update_progress(task_id, 
+                current_phase="failed",
+                details=f"Processing failed: {error_message}",
+                overall_progress=0
+            )
+    except Exception as e:
+        logger.error(f"Error handling processing failure: {e}")

@@ -2,16 +2,18 @@
 const getApiBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
   
+  // If explicitly set, use that (this covers your local uvicorn setup)
+  if (envUrl) {
+    return envUrl;
+  }
+  
   // In development mode with Docker, use the proxy
   if (import.meta.env.DEV) {
     return '/api';
   }
   
-  // If explicitly set and not the Docker backend URL, use that
-  if (envUrl) {
-    return envUrl;
-  }
-  
+  // Fallback
+  return 'http://localhost:8000';
 };
 
 export const API_BASE_URL = getApiBaseUrl();

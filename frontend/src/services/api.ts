@@ -40,7 +40,23 @@ class ApiService {
     return handleResponse<FileTreeResponse>(response);
   }
 
-  async startConversion(data: { file_ids: string[]; refresh_token: string }, sessionId?: string): Promise<{ task_id: string; session_id: string }> {
+  async fetchFileTreeByPath(path: string, token: string): Promise<FileTreeResponse> {
+    const url = new URL(`${API_BASE_URL}/path/tree`);
+    url.searchParams.set('path', path);
+    url.searchParams.set('token', token);
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return handleResponse<FileTreeResponse>(response);
+  }
+
+  async startConversion(data: { 
+    file_ids: string[]; 
+    refresh_token: string; 
+    user_id: string;
+    estimated_cost?: number;
+  }, sessionId?: string): Promise<{ task_id: string; session_id: string }> {
     const response = await fetch(`${API_BASE_URL}/convert`, {
       method: 'POST',
       headers: this.getHeaders(sessionId),
@@ -48,7 +64,8 @@ class ApiService {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to start conversion');
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to start conversion');
     }
 
     return response.json();

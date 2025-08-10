@@ -1,14 +1,16 @@
 import { useState, useCallback } from 'react';
-import { FileItem, FileTreeResponse } from '@/types';
+import { FileItem, FileTreeResponse, ProcessingEstimates } from '@/types';
 import { apiService } from '@/services/api';
 import { useToast } from './use-toast';
 import { useAuth } from './useAuth';
-import { extractItemIdFromUrl, isValidOneDriveUrl } from '@/utils/url';
+import { extractItemIdFromUrl, extractDrivePathFromUrl, isValidOneDriveUrl, parseOneDriveUrl } from '@/utils/url';
 import { processFileTree } from '@/utils/fileTree';
 
 export const useFileTree = () => {
   const [fileTree, setFileTree] = useState<FileItem[]>([]);
   const [totalVobFiles, setTotalVobFiles] = useState(0);
+  const [totalVobSize, setTotalVobSize] = useState(0);
+  const [estimates, setEstimates] = useState<ProcessingEstimates | null>(null);
   const [isLoadingTree, setIsLoadingTree] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
@@ -20,17 +22,17 @@ export const useFileTree = () => {
     if (!isValidOneDriveUrl(onedriveUrl)) {
       toast({
         title: "Error",
-        description: "Please enter a valid OneDrive URL with an item ID",
+        description: "Please enter a valid OneDrive URL",
         variant: "destructive",
       });
       return;
     }
 
-    const itemId = extractItemIdFromUrl(onedriveUrl);
-    if (!itemId) {
+    const parsedInfo = parseOneDriveUrl(onedriveUrl);
+    if (!parsedInfo) {
       toast({
         title: "Error",
-        description: "Could not extract item ID from URL",
+        description: "Could not extract item ID or path from URL",
         variant: "destructive",
       });
       return;
@@ -47,10 +49,20 @@ export const useFileTree = () => {
 
     try {
       setIsLoadingTree(true);
-      
-      const data = await apiService.fetchFileTree(itemId, providerToken);
+
+      if (parsedInfo.kind === 'itemId') {
+        console.log('DEBUG: using itemId', parsedInfo.itemId);
+      } else {
+        console.log('DEBUG: using path', parsedInfo.path);
+      }
+
+      const data = parsedInfo.kind === 'itemId'
+        ? await apiService.fetchFileTree(parsedInfo.itemId, providerToken)
+        : await apiService.fetchFileTreeByPath(parsedInfo.path, providerToken);
       setFileTree(data.tree);
       setTotalVobFiles(data.total_vob_files);
+      setTotalVobSize(data.total_vob_size);
+      setEstimates(data.estimates);
 
       // Auto-select all VOB files and expand folders containing them
       const { selectedVobFiles, foldersToExpand } = processFileTree(data.tree);
@@ -59,7 +71,7 @@ export const useFileTree = () => {
 
       toast({
         title: "Success",
-        description: `Found ${data.total_vob_files} VOB files`,
+        description: `Found ${data.total_vob_files} VOB files (${data.estimates.total_size_gb} GB)`,
       });
     } catch (error) {
       if (error instanceof Error && 'status' in error && error.status === 401) {
@@ -134,6 +146,8 @@ export const useFileTree = () => {
   return {
     fileTree,
     totalVobFiles,
+    totalVobSize,
+    estimates,
     isLoadingTree,
     selectedFiles,
     expandedFolders,
