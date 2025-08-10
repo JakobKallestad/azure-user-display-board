@@ -5,6 +5,7 @@ import json
 import asyncio
 import logging
 import aiofiles
+import time
 from tqdm.asyncio import tqdm as tqdm_asyncio
 from config import FFMPEG_BASE, FFMPEG_ENCODE, FFPROBE_BASE, MP4_OUTPUT_DIR, LOG_DIR
 from progress import update_file_progress
@@ -13,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 def build_ffmpeg_command(input_file: str, output_file: str) -> list:
     """Build FFmpeg command for VOB to MP4 conversion."""
-    #return FFMPEG_BASE + ["-i", input_file] + FFMPEG_ENCODE + [output_file]
-    return FFMPEG_BASE + ["-i", input_file] + FFMPEG_ENCODE + ["-f", "null", "-"]
+    return FFMPEG_BASE + ["-i", input_file] + FFMPEG_ENCODE + [output_file]
+    #return FFMPEG_BASE + ["-i", input_file] + FFMPEG_ENCODE + ["-f", "null", "-"]
 
 async def parse_ffmpeg_duration(stderr_text: str) -> float | None:
     """Parse duration from FFmpeg stderr output."""
@@ -94,8 +95,8 @@ async def convert_vob_to_mp4(vob_path: str, semaphore_conversion, task_id: str =
             bar_args = {
                 "desc": desc,
                 "position": conversion_index,
-                "mininterval": 0.1,
-                "smoothing": 0.05,
+                "mininterval": 1.0,  # throttle terminal progress redraws
+                "smoothing": 0.2,
                 "leave": True,
                 "unit": "frame" if total is None else unit
             }
@@ -110,7 +111,12 @@ async def convert_vob_to_mp4(vob_path: str, semaphore_conversion, task_id: str =
                     limit=10 * 1024 * 1024
                 )
 
-                last_progress = 0
+                # Throttling state
+                last_metric_value = 0  # last frame or time value we drew
+                last_emit_ts = time.monotonic()
+                last_log_flush_ts = last_emit_ts
+                log_buffer: list[str] = []
+
                 async with aiofiles.open(log_file, "w", encoding="utf-8") as log_f:
                     while True:
                         try:
@@ -118,18 +124,29 @@ async def convert_vob_to_mp4(vob_path: str, semaphore_conversion, task_id: str =
                             if not line:
                                 break
                             line = line.decode("utf-8", errors="ignore").strip()
-                            await log_f.write(line + "\n")
+                            # Buffer logs and flush roughly once per second
+                            log_buffer.append(line)
+                            now = time.monotonic()
+                            if (now - last_log_flush_ts) >= 1.0 or len(log_buffer) >= 200:
+                                await log_f.write("\n".join(log_buffer) + "\n")
+                                log_buffer.clear()
+                                last_log_flush_ts = now
 
                             if use_frames:
                                 frame_match = re.search(r"frame=\s*(\d+)", line)
                                 if frame_match and total_frames:
                                     current_frame = int(frame_match.group(1))
-                                    progress_bar.update(current_frame - last_progress)
-                                    last_progress = current_frame
-                                    progress_bar.set_postfix(frame=current_frame)
-                                    if task_id:
-                                        frame_progress = int((current_frame / total_frames) * 100)
-                                        update_file_progress(task_id, filename, "convert", frame_progress)
+                                    # Throttle updates to ~1/sec
+                                    if (now - last_emit_ts) >= 1.0 or current_frame == total_frames:
+                                        delta = current_frame - last_metric_value
+                                        if delta > 0:
+                                            progress_bar.update(delta)
+                                            last_metric_value = current_frame
+                                            progress_bar.set_postfix(frame=current_frame)
+                                            if task_id:
+                                                frame_progress = int((current_frame / total_frames) * 100)
+                                                update_file_progress(task_id, filename, "convert", frame_progress)
+                                        last_emit_ts = now
                             else:
                                 time_pattern = r"time=(\d{2}:\d{2}:\d{2}\.\d{2})"
                                 if total_duration and total_duration > 0:
@@ -137,12 +154,17 @@ async def convert_vob_to_mp4(vob_path: str, semaphore_conversion, task_id: str =
                                     if time_match:
                                         h, m, s = map(float, time_match.group(1).split(':'))
                                         current_time = h * 3600 + m * 60 + s
-                                        progress_bar.update(current_time - last_progress)
-                                        last_progress = current_time
-                                        progress_bar.set_postfix(time=time_match.group(1))
-                                        if task_id:
-                                            time_progress = int((current_time / total_duration) * 100)
-                                            update_file_progress(task_id, filename, "convert", time_progress)
+                                        # Throttle updates to ~1/sec
+                                        if (now - last_emit_ts) >= 1.0 or current_time >= total_duration:
+                                            delta = current_time - last_metric_value
+                                            if delta > 0:
+                                                progress_bar.update(delta)
+                                                last_metric_value = current_time
+                                                progress_bar.set_postfix(time=time_match.group(1))
+                                                if task_id:
+                                                    time_progress = int((current_time / total_duration) * 100)
+                                                    update_file_progress(task_id, filename, "convert", time_progress)
+                                            last_emit_ts = now
                         except asyncio.TimeoutError:
                             logger.warning(f"Timeout reading FFmpeg stderr for {vob_path}")
                             continue
@@ -151,6 +173,11 @@ async def convert_vob_to_mp4(vob_path: str, semaphore_conversion, task_id: str =
                             break
 
                 await process.wait()
+
+                # Final flush of any remaining logs
+                if log_buffer:
+                    async with aiofiles.open(log_file, "a", encoding="utf-8") as log_f2:
+                        await log_f2.write("\n".join(log_buffer) + "\n")
 
                 if process.returncode != 0:
                     async with aiofiles.open(log_file, "r", encoding="utf-8") as f:

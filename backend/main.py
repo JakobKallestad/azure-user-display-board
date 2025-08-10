@@ -20,8 +20,18 @@ from utils import refresh_access_token
 from progress import progress_state, update_progress
 from processing import process_selected_files
 from dotenv import load_dotenv
+import os, subprocess, sys
 
 load_dotenv()
+
+# DEBUG
+print("os.cpu_count():", os.cpu_count())
+subprocess.run(["nproc"])
+subprocess.run(["getconf","_NPROCESSORS_ONLN"])
+subprocess.run("cat /proc/cpuinfo | grep -i '^processor' | wc -l", shell=True)
+subprocess.run("ffmpeg -hide_banner -f lavfi -i color=s=16x16:d=1 -c:v libx264 -preset ultrafast -f null -", shell=True)
+# DEBUG
+
 
 # --- Setup ---
 os.makedirs(OUTPUT_DIR, exist_ok=True)
