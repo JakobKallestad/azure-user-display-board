@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 
 def build_ffmpeg_command(input_file: str, output_file: str) -> list:
     """Build FFmpeg command for VOB to MP4 conversion."""
-    return FFMPEG_BASE + ["-i", input_file] + FFMPEG_ENCODE + [output_file]
+    #return FFMPEG_BASE + ["-i", input_file] + FFMPEG_ENCODE + [output_file]
+    return FFMPEG_BASE + ["-i", input_file] + FFMPEG_ENCODE + ["-f", "null", "-"]
 
 async def parse_ffmpeg_duration(stderr_text: str) -> float | None:
     """Parse duration from FFmpeg stderr output."""

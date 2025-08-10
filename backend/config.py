@@ -38,9 +38,10 @@ FFMPEG_BASE = ["ffmpeg", "-y", "-fflags", "+genpts"]
 # CPU Encoding
 FFMPEG_ENCODE = [
     "-c:v", "libx264", "-preset", "ultrafast", "-crf", "29",
-    "-vf", "scale=1280:720", "-r", "30",
+    "-vf", "scale=1280:720",
     "-c:a", "aac", "-b:a", "128k",
     "-progress", "pipe:2",
+    "-threads", "0"
 ]
 
 FFPROBE_BASE = ["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=nb_frames", "-of", "json"] 

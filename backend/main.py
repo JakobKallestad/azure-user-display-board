@@ -19,6 +19,9 @@ from models import ConvertRequest
 from utils import refresh_access_token
 from progress import progress_state, update_progress
 from processing import process_selected_files
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- Setup ---
 os.makedirs(OUTPUT_DIR, exist_ok=True)

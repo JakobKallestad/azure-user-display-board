@@ -5,6 +5,14 @@ import { componentTagger } from "lovable-tagger";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+
+  // Tell Vite where to load .env files from
+  envDir: path.resolve(__dirname, '..'),
+
+  // Only expose variables you intend to use in the client
+  // (add other prefixes if you need them)
+  envPrefix: ['VITE_'],
+
   server: {
     host: "0.0.0.0",
     port: 3000,

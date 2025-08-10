@@ -4,6 +4,7 @@ import asyncio
 import logging
 import aiohttp
 from progress import update_progress, progress_state
+from credits import refund_credits_on_failure
 from file_operations import download_file_by_id, upload_file, get_file_info
 from video_processing import convert_vob_to_mp4
 

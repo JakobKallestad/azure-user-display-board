@@ -31,3 +31,4 @@ __pycache__/
 .env
 .env.production
 docker.env
+.firebase/
