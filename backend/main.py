@@ -184,7 +184,7 @@ async def stripe_webhook(request: Request):
         logger.info("Stripe checkout completed metadata user_id=%s amount=%s", user_id, amount)
 
         if user_id and event_id:
-            # Idempotency check: has this event already been processed?
+            # Idempotency check: has this event already been processed ?
             try:
                 existing = supabase.table("credit_transactions").select("id").eq("event_id", event_id).eq("transaction_type", "stripe_topup").execute()
                 if existing.data and len(existing.data) > 0:
