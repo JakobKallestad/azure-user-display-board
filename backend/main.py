@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://frontend:80", "https://driver-461415.web.app"],
+    allow_origins=["http://localhost:3000", "http://frontend:80", "https://driver-461415.web.app", "https://1driver.limeagents.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
