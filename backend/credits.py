@@ -118,7 +118,7 @@ async def refund_credits_on_failure(user_id: str, amount: float, task_id: str):
         logger.error(f"Failed to refund credits: {e}")
 
 
-async def add_user_credits(user_id: str, amount: float, description: str = "Stripe top-up", event_id: str = None, transaction_type: str = "credit") -> dict:
+async def add_user_credits(user_id: str, amount: float, description: str = "Stripe top-up") -> dict:
     """Add credits to a user's balance and log the transaction.
 
     Returns the updated credit record.
@@ -152,19 +152,16 @@ async def add_user_credits(user_id: str, amount: float, description: str = "Stri
 
         # Log transaction (best-effort)
         try:
-            tx = {
+            supabase.table("credit_transactions").insert({
                 "user_id": user_id,
                 "added_amount": float(amount),
                 "previous_credits": previous_amount,
                 "new_credits": new_amount,
                 "remaining_credits": new_amount,
-                "transaction_type": transaction_type,
+                "transaction_type": "stripe_topup",
                 "description": description,
                 "updated_at": "now()"
-            }
-            if event_id:
-                tx["event_id"] = event_id
-            supabase.table("credit_transactions").insert(tx).execute()
+            }).execute()
         except Exception as log_error:
             logger.warning(f"Failed to log credit transaction: {log_error}")
 

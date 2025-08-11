@@ -195,8 +195,8 @@ async def stripe_webhook(request: Request):
                 # If check fails, still proceed to avoid blocking real payments
 
             try:
-                # Add credits and log event_id for idempotency
-                await credits_add_user_credits(user_id, amount, description='Stripe top-up', event_id=event_id, transaction_type='stripe_topup')
+                # Add credits
+                await credits_add_user_credits(user_id, amount, description='Stripe top-up')
                 logger.info("Credits updated for user %s by $%s", user_id, amount)
             except Exception as e:
                 logger.error("Failed to add credits after payment: %r", e)
