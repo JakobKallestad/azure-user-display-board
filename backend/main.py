@@ -170,7 +170,8 @@ async def stripe_webhook(request: Request):
         logger.error(f"Webhook signature verification failed: {e}")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    if event.get('type') in ('checkout.session.completed', 'checkout.session.async_payment_succeeded'):
+    event_id = event.get('id')
+    if event.get('type') in ('checkout.session.completed',):
         session_obj = event.get('data', {}).get('object', {}) or {}
         metadata = session_obj.get('metadata') or {}
         user_id = metadata.get('user_id')
@@ -182,15 +183,25 @@ async def stripe_webhook(request: Request):
 
         logger.info("Stripe checkout completed metadata user_id=%s amount=%s", user_id, amount)
 
-        if user_id:
+        if user_id and event_id:
+            # Idempotency check: has this event already been processed?
             try:
-                # Use centralized credits helper (aliased to avoid name clash with endpoint)
-                await credits_add_user_credits(user_id, amount, description='Stripe top-up')
+                existing = supabase.table("credit_transactions").select("id").eq("event_id", event_id).eq("transaction_type", "stripe_topup").execute()
+                if existing.data and len(existing.data) > 0:
+                    logger.info(f"Stripe event {event_id} already processed, skipping credit addition.")
+                    return { 'received': True, 'idempotent': True }
+            except Exception as e:
+                logger.error(f"Error checking idempotency for event {event_id}: {e}")
+                # If check fails, still proceed to avoid blocking real payments
+
+            try:
+                # Add credits and log event_id for idempotency
+                await credits_add_user_credits(user_id, amount, description='Stripe top-up', event_id=event_id, transaction_type='stripe_topup')
                 logger.info("Credits updated for user %s by $%s", user_id, amount)
             except Exception as e:
                 logger.error("Failed to add credits after payment: %r", e)
         else:
-            logger.warning("Stripe session metadata missing user_id; skipping credit update")
+            logger.warning("Stripe session metadata missing user_id or event_id; skipping credit update")
     else:
         logger.info("Ignoring Stripe event type %s", event.get('type'))
 

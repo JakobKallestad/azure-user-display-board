@@ -53,18 +53,6 @@ const UserProfile: React.FC = () => {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [isStartingConversion, setIsStartingConversion] = useState(false);
 
-  // Debug logging
-  useEffect(() => {
-    console.log('UserProfile state:', {
-      sessionId,
-      isCreatingSession,
-      sessionError,
-      selectedFilesCount: selectedFiles.size,
-      isConverting,
-      hasRefreshToken: !!session?.refresh_token
-    });
-  }, [sessionId, isCreatingSession, sessionError, selectedFiles.size, isConverting, session?.refresh_token]);
-
   // Show session error toast
   useEffect(() => {
     if (sessionError) {
@@ -99,20 +87,6 @@ const UserProfile: React.FC = () => {
   };
 
   const handleStartConversion = async () => {
-    console.log('🚀 Starting conversion process...');
-    console.log('Session:', { 
-      sessionId, 
-      hasRefreshToken: !!session?.refresh_token, 
-      hasProviderRefreshToken: !!session?.provider_refresh_token,
-      userId: session?.user?.id,
-      refreshTokenLength: session?.refresh_token?.length,
-      providerRefreshTokenLength: session?.provider_refresh_token?.length,
-      refreshTokenStart: session?.refresh_token?.substring(0, 20) + '...',
-      providerRefreshTokenStart: session?.provider_refresh_token?.substring(0, 20) + '...'
-      
-    });
-    console.log('Selected files:', Array.from(selectedFiles));
-    console.log('Estimates:', estimates);
     
     if (!sessionId) {
       toast({
@@ -134,12 +108,6 @@ const UserProfile: React.FC = () => {
 
     // Check if user can afford the conversion - use the correct field name
     const estimatedCost = estimates?.estimated_cost || 0;
-    console.log('💰 Credit check:', { 
-      estimatedCost, 
-      currentCredits: credits?.credits, 
-      canAfford: canAfford(estimatedCost),
-      estimatesObject: estimates 
-    });
     
     if (!canAfford(estimatedCost)) {
       toast({
@@ -156,7 +124,6 @@ const UserProfile: React.FC = () => {
 
   const handleConfirmConversion = async () => {
     setIsStartingConversion(true);
-    
     try {
       const selectedFileIds = Array.from(selectedFiles);
       const estimatedCost = estimates?.estimated_cost || 0;
@@ -166,20 +133,15 @@ const UserProfile: React.FC = () => {
         user_id: session!.user.id,
         estimated_cost: estimatedCost,
       };
-      
-      console.log('📤 Sending conversion request:', {
-        file_ids: conversionData.file_ids,
-        refresh_token_length: conversionData.refresh_token.length,
-        refresh_token_starts_with: conversionData.refresh_token.substring(0, 10),
-        estimated_cost: conversionData.estimated_cost,
-        user_id: conversionData.user_id
-      });
-      
-      await startConversion(conversionData);
 
-      // Immediately update credits UI to reflect the deduction
+      // Optimistically update credits in UI
+      if (credits && estimatedCost > 0) {
+        credits.credits = Math.max(0, credits.credits - estimatedCost);
+      }
+
+      await startConversion(conversionData);
+      // Refresh credits from backend after conversion starts
       await fetchCredits();
-      
       setShowConfirmDialog(false);
       toast({
         title: "Conversion Started",
@@ -205,7 +167,7 @@ const UserProfile: React.FC = () => {
     await signOut();
   };
 
-  const isButtonDisabled = isConverting || selectedFiles.size === 0 || !sessionId || isCreatingSession;
+  const isButtonDisabled = isConverting || selectedFiles.size === 0 || !sessionId || isCreatingSession || !canAfford(estimates?.estimated_cost || 0);
 
   if (loading) {
     return (

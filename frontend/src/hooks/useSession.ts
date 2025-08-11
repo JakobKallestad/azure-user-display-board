@@ -11,7 +11,6 @@ export const useSession = () => {
     try {
       setIsCreatingSession(true);
       setSessionError(null);
-      console.log('Creating new session...', { API_BASE_URL });
       
       const response = await fetch(`${API_BASE_URL}/session`, {
         method: 'POST',
@@ -19,8 +18,6 @@ export const useSession = () => {
           'Content-Type': 'application/json',
         },
       });
-
-      console.log('Session creation response:', response.status, response.statusText);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -31,7 +28,6 @@ export const useSession = () => {
       const data = await response.json();
       const newSessionId = data.session_id;
       
-      console.log('New session created:', newSessionId);
       setSessionId(newSessionId);
       localStorage.setItem('user_session_id', newSessionId);
     } catch (error) {
@@ -45,7 +41,6 @@ export const useSession = () => {
   // Get session from localStorage or create new one
   useEffect(() => {
     const storedSessionId = localStorage.getItem('user_session_id');
-    console.log('Stored session ID:', storedSessionId);
     
     if (storedSessionId) {
       setSessionId(storedSessionId);

@@ -50,12 +50,6 @@ export const useFileTree = () => {
     try {
       setIsLoadingTree(true);
 
-      if (parsedInfo.kind === 'itemId') {
-        console.log('DEBUG: using itemId', parsedInfo.itemId);
-      } else {
-        console.log('DEBUG: using path', parsedInfo.path);
-      }
-
       const data = parsedInfo.kind === 'itemId'
         ? await apiService.fetchFileTree(parsedInfo.itemId, providerToken)
         : await apiService.fetchFileTreeByPath(parsedInfo.path, providerToken);
